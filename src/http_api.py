@@ -50,9 +50,21 @@ def build_handler(service, static_dir):
                     return self._send(200, {"status": "ok"})
                 if path == "/api/state":
                     return self._send(200, service.state())
+                if path == "/api/topology":
+                    return self._send(200, service.topology())
+                if path == "/api/jobs":
+                    query = urlparse(self.path).query
+                    status = None
+                    for pair in query.split("&"):
+                        if pair.startswith("status="):
+                            from urllib.parse import unquote
+                            status = unquote(pair.split("=", 1)[1])
+                    return self._send(200, {"jobs": service.list_jobs(status)})
                 if path == "/api/items":
                     return self._send(200, {"items": service.list_items()})
                 parts = [part for part in path.split("/") if part]
+                if len(parts) == 3 and parts[:2] == ["api", "jobs"]:
+                    return self._send(200, service.get_job(int(parts[2])))
                 if len(parts) == 3 and parts[:2] == ["api", "items"]:
                     return self._send(200, service.get_item(int(parts[2])))
                 if len(parts) == 4 and parts[:2] == ["api", "items"] and parts[3] == "audit":
@@ -78,6 +90,22 @@ def build_handler(service, static_dir):
                 parts = [part for part in path.split("/") if part]
                 if parts == ["api", "items"]:
                     return self._send(201, service.create_item(payload, actor, role, region))
+                if parts == ["api", "topology"]:
+                    return self._send(200, service.revise_topology(payload, actor, role))
+                if parts == ["api", "valves"]:
+                    return self._send(201, service.register_valve(payload, actor, role))
+                if len(parts) == 3 and parts[:2] == ["api", "valves"] and parts[2] == "sync":
+                    raise DomainError("valve_id_required", "请使用 /api/valves/<id>/sync", 400)
+                if len(parts) == 4 and parts[:2] == ["api", "valves"] and parts[3] == "sync":
+                    return self._send(200, service.sync_valve(parts[2], payload, actor, role))
+                if len(parts) == 4 and parts[:2] == ["api", "jobs"] and parts[3] == "resolve":
+                    return self._send(200, service.resolve_job(int(parts[2]), payload, actor, role))
+                if len(parts) == 3 and parts[:2] == ["api", "jobs"]:
+                    return self._send(200, service.get_job(int(parts[2])))
+                if len(parts) == 4 and parts[:2] == ["api", "items"] and parts[3] == "isolation-jobs":
+                    return self._send(201, service.create_isolation_job(int(parts[2]), payload, actor, role))
+                if len(parts) == 4 and parts[:2] == ["api", "jobs"] and parts[3] == "receipts":
+                    return self._send(201, service.submit_receipt(int(parts[2]), payload, actor, role))
                 if len(parts) == 4 and parts[:2] == ["api", "items"] and parts[3] == "sources":
                     return self._send(201, service.add_source(int(parts[2]), payload, actor, role, region))
                 if len(parts) == 4 and parts[:2] == ["api", "items"] and parts[3] == "actions":
