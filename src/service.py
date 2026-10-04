@@ -67,3 +67,84 @@ class Service:
 
     def state(self):
         return self.repository.state_summary()
+
+    # ------------------------------------------------------------------
+    # 隔离账：连接关系（拓扑）
+    # ------------------------------------------------------------------
+
+    def set_topology(self, payload, actor, role):
+        if not actor or not role:
+            raise DomainError("identity_required", "需要用户身份和角色", 401)
+        if role not in rules.TOPOLOGY_ROLES:
+            raise DomainError("forbidden", "当前角色不能维护连接关系", 403)
+        from .topology import normalize_connection
+
+        connection = normalize_connection(payload)
+        return self.repository.set_segment_valves(
+            connection["pipeline_id"], connection["segment_id"], connection["valves"], actor, role
+        )
+
+    def get_topology(self, pipeline_id, segment_id):
+        return {"pipeline_id": pipeline_id, "segment_id": segment_id, "valves": self.repository.get_segment_valves(pipeline_id, segment_id)}
+
+    def list_valves(self):
+        return {"valves": self.repository.list_valves()}
+
+    # ------------------------------------------------------------------
+    # 隔离账：方案与阀门互斥
+    # ------------------------------------------------------------------
+
+    def submit_isolation(self, item_id, actor, role):
+        if not actor or not role:
+            raise DomainError("identity_required", "需要用户身份和角色", 401)
+        if role not in rules.ISOLATION_SUBMIT_ROLES:
+            raise DomainError("forbidden", "当前角色不能提交隔离方案", 403)
+        return self.repository.submit_isolation(item_id, actor, role)
+
+    def get_isolation(self, item_id):
+        plan = self.repository.get_active_plan(item_id)
+        if plan is None:
+            return {"item_id": item_id, "plan": None}
+        return {"item_id": item_id, "plan": plan}
+
+    def submit_receipt(self, item_id, payload, actor, role):
+        if not actor or not role:
+            raise DomainError("identity_required", "需要用户身份和角色", 401)
+        if role not in rules.RECEIPT_ROLES:
+            raise DomainError("forbidden", "当前角色不能提交关阀回执", 403)
+        receipt = {
+            "valve_id": payload.get("valve_id"),
+            "result": payload.get("result"),
+            "observed_at": payload.get("observed_at"),
+            "source": payload.get("source", actor),
+        }
+        return self.repository.submit_receipt(item_id, receipt, actor, role)
+
+    def resume_isolation(self, item_id, actor, role):
+        if not actor or not role:
+            raise DomainError("identity_required", "需要用户身份和角色", 401)
+        if role not in rules.RESUME_ROLES:
+            raise DomainError("forbidden", "当前角色不能恢复隔离作业", 403)
+        return self.repository.resume_isolation(item_id, actor, role)
+
+    # ------------------------------------------------------------------
+    # 隔离账：断网阀位合并与冲突裁决
+    # ------------------------------------------------------------------
+
+    def merge_positions(self, payload, actor, role):
+        if not actor or not role:
+            raise DomainError("identity_required", "需要用户身份和角色", 401)
+        if role not in rules.POSITION_MERGE_ROLES:
+            raise DomainError("forbidden", "当前角色不能合并阀位", 403)
+        reports = payload.get("reports")
+        if not isinstance(reports, list) or not reports:
+            raise DomainError("reports_required", "必须提供阀位上报列表")
+        return self.repository.merge_valve_positions(reports, actor, role)
+
+    def resolve_isolation(self, item_id, payload, actor, role):
+        if not actor or not role:
+            raise DomainError("identity_required", "需要用户身份和角色", 401)
+        if role not in rules.RESOLVE_ROLES:
+            raise DomainError("forbidden", "当前角色不能裁决隔离冲突", 403)
+        resolution = payload.get("resolution")
+        return self.repository.resolve_isolation(item_id, resolution, actor, role)

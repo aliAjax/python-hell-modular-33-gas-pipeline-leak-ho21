@@ -2,7 +2,7 @@ import json
 import mimetypes
 import os
 from http.server import BaseHTTPRequestHandler
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 
 from .domain import DomainError
 
@@ -52,12 +52,23 @@ def build_handler(service, static_dir):
                     return self._send(200, service.state())
                 if path == "/api/items":
                     return self._send(200, {"items": service.list_items()})
+                if path == "/api/topology/connections":
+                    query = parse_qs(urlparse(self.path).query)
+                    pipeline_id = (query.get("pipeline_id") or [""])[0]
+                    segment_id = (query.get("segment_id") or [""])[0]
+                    if not pipeline_id or not segment_id:
+                        raise DomainError("field_required", "pipeline_id 和 segment_id 不能为空", 400)
+                    return self._send(200, service.get_topology(pipeline_id, segment_id))
+                if path == "/api/topology/valves":
+                    return self._send(200, service.list_valves())
                 parts = [part for part in path.split("/") if part]
                 if len(parts) == 3 and parts[:2] == ["api", "items"]:
                     return self._send(200, service.get_item(int(parts[2])))
                 if len(parts) == 4 and parts[:2] == ["api", "items"] and parts[3] == "audit":
                     item = service.get_item(int(parts[2]))
                     return self._send(200, {"events": item["audit"]})
+                if len(parts) == 4 and parts[:2] == ["api", "items"] and parts[3] == "isolation":
+                    return self._send(200, service.get_isolation(int(parts[2])))
                 if path == "/":
                     file_path = os.path.join(static_dir, "index.html")
                     with open(file_path, "rb") as handle:
@@ -78,6 +89,10 @@ def build_handler(service, static_dir):
                 parts = [part for part in path.split("/") if part]
                 if parts == ["api", "items"]:
                     return self._send(201, service.create_item(payload, actor, role, region))
+                if parts == ["api", "topology", "connections"]:
+                    return self._send(200, service.set_topology(payload, actor, role))
+                if parts == ["api", "topology", "positions", "merge"]:
+                    return self._send(200, service.merge_positions(payload, actor, role))
                 if len(parts) == 4 and parts[:2] == ["api", "items"] and parts[3] == "sources":
                     return self._send(201, service.add_source(int(parts[2]), payload, actor, role, region))
                 if len(parts) == 4 and parts[:2] == ["api", "items"] and parts[3] == "actions":
@@ -86,6 +101,14 @@ def build_handler(service, static_dir):
                         raise DomainError("action_required", "缺少 action", 400)
                     expected = payload.pop("expected_version", None)
                     return self._send(200, service.act(int(parts[2]), action, payload, actor, role, expected, region))
+                if len(parts) == 4 and parts[:2] == ["api", "items"] and parts[3] == "isolation":
+                    return self._send(201, service.submit_isolation(int(parts[2]), actor, role))
+                if len(parts) == 5 and parts[:2] == ["api", "items"] and parts[3] == "isolation" and parts[4] == "receipts":
+                    return self._send(200, service.submit_receipt(int(parts[2]), payload, actor, role))
+                if len(parts) == 5 and parts[:2] == ["api", "items"] and parts[3] == "isolation" and parts[4] == "resume":
+                    return self._send(200, service.resume_isolation(int(parts[2]), actor, role))
+                if len(parts) == 5 and parts[:2] == ["api", "items"] and parts[3] == "isolation" and parts[4] == "resolve":
+                    return self._send(200, service.resolve_isolation(int(parts[2]), payload, actor, role))
                 return self._send(404, {"error": "not_found", "message": "接口不存在"})
             except DomainError as exc:
                 return self._error(exc)

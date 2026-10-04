@@ -16,6 +16,14 @@ ENFORCE_REGION = False
 REGION_SENSITIVE_ACTIONS = set()
 ACTION_REQUIRES_VERSION = {"isolate", "repair", "pressure_test", "restore", "cancel"}
 
+# 隔离账（连接关系 + 阀门 + 泄漏事件）角色
+TOPOLOGY_ROLES = {"dispatcher", "supervisor"}
+ISOLATION_SUBMIT_ROLES = {"supervisor", "responder"}
+RECEIPT_ROLES = {"responder", "supervisor"}
+RESUME_ROLES = {"responder", "supervisor"}
+POSITION_MERGE_ROLES = {"dispatcher", "supervisor"}
+RESOLVE_ROLES = {"supervisor"}
+
 
 def assess(payload):
     pressure = float(payload.get("pressure_drop_kpa", 0))
